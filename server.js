@@ -11,7 +11,7 @@ app.get("/",(req,res)=>{
 
 app.post("/api/ai", (req,res)=>{
     const {prompt} = req.body;
-
+ 
     console.log("Prompt received:", prompt);
 
     res.json({
