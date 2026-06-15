@@ -97,6 +97,10 @@ def ai():
             data = request.json
             text = data.get("prompt", "")
             text = clean_text(text)
+            selected_code = data.get("selectedCode", "")
+            full_code = data.get("fullCode", "")
+            language = data.get("language", "")
+            file_name = data.get("fileName", "")
 
         print("Transcribed:", text)
 
