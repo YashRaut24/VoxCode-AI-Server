@@ -39,9 +39,23 @@ app.post("/api/ai", async (req, res) => {
             : "";
 
         const fullPrompt = `You are VoxCode AI, an expert coding assistant inside VS Code.
-${context}User instruction: ${prompt}
+        ${context}User instruction: ${prompt}
 
-Respond with raw code only. No markdown formatting, no backticks, no code fences, no explanation. Just the code itself.`;
+        Classify the user's intent as exactly one of: WRITE, EXPLAIN, DEBUG, REFACTOR.
+
+        - WRITE: user wants new code generated
+        - REFACTOR: user wants existing code rewritten or improved
+        - EXPLAIN: user wants understanding of code, no file changes
+        - DEBUG: user wants help finding or fixing a bug, no direct file insertion
+
+        Respond with ONLY raw JSON in exactly this shape, nothing else, no markdown fences:
+        {"intent": "WRITE", "response": "your content here"}
+
+        Rules for the "response" field:
+        - If intent is WRITE or REFACTOR: response must contain raw code only, no markdown, no backticks, no commentary.
+        - If intent is EXPLAIN or DEBUG: response must contain a clear plain-text explanation, no code fences.
+
+        Return only the JSON object. No extra text before or after it.`;
 
         console.log("Sending prompt to Gemini...");
 
@@ -84,15 +98,35 @@ if (!aiRes.ok) {
 }
 
 const aiData = await aiRes.json();
-const aiText = aiData?.choices?.[0]?.message?.content;        if (!aiText) {
-            console.error("Unexpected Gemini response shape:", JSON.stringify(geminiData));
-            return res.status(502).json({ error: "Unexpected response from AI provider" });
-        }
+const aiText = aiData?.choices?.[0]?.message?.content;
 
-        console.log("Gemini responded successfully");
+if (!aiText) {
+    console.error("Unexpected response shape:", JSON.stringify(aiData));
+    return res.status(502).json({ error: "Unexpected response from AI provider" });
+}
 
-        res.json({ response: aiText });
+const validIntents = ["WRITE", "EXPLAIN", "DEBUG", "REFACTOR"];
+let intent = "WRITE";
+let responseText = aiText;
 
+try {
+    // Strip potential markdown fences the model might still add
+    const cleaned = aiText.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+    const parsed = JSON.parse(cleaned);
+
+    if (parsed && typeof parsed.response === "string" && validIntents.includes(parsed.intent)) {
+        intent = parsed.intent;
+        responseText = parsed.response;
+    } else {
+        console.warn("Parsed JSON missing expected shape, falling back to WRITE");
+    }
+} catch (parseErr) {
+    console.warn("Failed to parse structured response, falling back to raw text as WRITE:", parseErr.message);
+}
+
+console.log(`Classified intent: ${intent}`);
+
+res.json({ intent, response: responseText });``
     } catch (err) {
         console.error("Server error:", err.message);
         res.status(500).json({ error: "Internal server error" });
