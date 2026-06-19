@@ -59,7 +59,7 @@ app.post("/api/ai", async (req, res) => {
 
         console.log("Sending prompt to Gemini...");
 
-        // Call Gemini API
+        // Call Groq API
  let aiRes;
 let attempts = 0;
 const maxAttempts = 3;
