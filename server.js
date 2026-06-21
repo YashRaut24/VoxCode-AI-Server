@@ -33,7 +33,13 @@ app.post("/api/ai", async (req, res) => {
         if (fileName) contextParts.push(`File: ${fileName}`);
         if (selectedCode) contextParts.push(`Selected code:\n\`\`\`\n${selectedCode}\n\`\`\``);
         else if (fullCode) contextParts.push(`Full file code:\n\`\`\`\n${fullCode}\n\`\`\``);
+        if (Array.isArray(req.body.workspaceContext) && req.body.workspaceContext.length > 0) {
+            const relatedFilesText = req.body.workspaceContext
+                .map(f => `File: ${f.fileName}\n\`\`\`\n${f.content}\n\`\`\``)
+                .join('\n\n');
 
+            contextParts.push(`Related files in the workspace for additional context:\n${relatedFilesText}`);
+        }
         const context = contextParts.length > 0
             ? `Context:\n${contextParts.join("\n")}\n\n`
             : "";
