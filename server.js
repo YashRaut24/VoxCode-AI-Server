@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
+const { indexWorkspace, search, reindexFile, removeFile } = require("./rag");
 
 const app = express();
 
@@ -10,6 +11,46 @@ app.use(express.json());
 // Health check
 app.get("/", (req, res) => {
     res.json({ status: "VoxCode AI server running" });
+});
+
+// Workspace indexing endpoint
+app.post("/api/index", async (req, res) => {
+    const { workspacePath } = req.body;
+
+    if (!workspacePath || typeof workspacePath !== "string") {
+        return res.status(400).json({ error: "workspacePath is required" });
+    }
+
+    // Start indexing in background — don't block the response
+    res.json({ status: "indexing_started", workspacePath });
+
+    try {
+        const result = await indexWorkspace(workspacePath);
+        console.log(`Workspace indexing complete:`, result);
+    } catch (err) {
+        console.error("Indexing error:", err.message);
+    }
+});
+
+// File change notification endpoint
+app.post("/api/reindex", async (req, res) => {
+    const { filePath, workspacePath, deleted } = req.body;
+
+    if (!filePath) {
+        return res.status(400).json({ error: "filePath is required" });
+    }
+
+    res.json({ status: "reindex_queued" });
+
+    try {
+        if (deleted) {
+            await removeFile(filePath);
+        } else {
+            await reindexFile(filePath, workspacePath);
+        }
+    } catch (err) {
+        console.error("Reindex error:", err.message);
+    }
 });
 
 // AI endpoint
@@ -39,11 +80,20 @@ app.post("/api/ai", async (req, res) => {
         if (selectedCode) contextParts.push(`Selected code:\n\`\`\`\n${selectedCode}\n\`\`\``);
         else if (fullCode) contextParts.push(`Full file code:\n\`\`\`\n${fullCode}\n\`\`\``);
 
-        if (Array.isArray(req.body.workspaceContext) && req.body.workspaceContext.length > 0) {
-            const relatedFilesText = req.body.workspaceContext
-                .map(f => `File: ${f.fileName}\n\`\`\`\n${f.content}\n\`\`\``)
-                .join('\n\n');
-            contextParts.push(`Related files in the workspace:\n${relatedFilesText}`);
+       const workspacePath = req.body.workspacePath;
+        if (workspacePath) {
+            try {
+                const ragResults = await search(prompt, workspacePath);
+                if (ragResults.length > 0) {
+                    const ragText = ragResults
+                        .map(r => `File: ${r.filePath}\n\`\`\`\n${r.content}\n\`\`\``)
+                        .join('\n\n');
+                    contextParts.push(`Semantically relevant files from workspace:\n${ragText}`);
+                    console.log(`RAG retrieved ${ragResults.length} relevant chunks`);
+                }
+            } catch (ragErr) {
+                console.warn("RAG search failed, continuing without context:", ragErr.message);
+            }
         }
 
         const context = contextParts.length > 0
